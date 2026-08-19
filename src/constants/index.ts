@@ -103,13 +103,19 @@ export const CURRENCY = {
 };
 
 // ==================== 수조 환경 ====================
+// emoji·preview 는 테마 선택 UI 용. preview 는 TankScene ENV 의 물색→배경색을 CSS 로 옮긴 것 —
+// TankScene 에서 import 하면 three.js 체인이 첫 번들에 딸려 들어와 여기 중복 정의한다.
+// unlockLevel 은 레벨 시스템 미완성(경험치 미지급)으로 아직 게이팅에 쓰지 않는다.
 
-export const TANK_ENVIRONMENTS: Record<TankEnvironment, { name: string; unlockLevel: number }> = {
-  coral_reef: { name: '산호초', unlockLevel: 1 },
-  deep_sea: { name: '심해', unlockLevel: 5 },
-  korean_river: { name: '한국 강', unlockLevel: 10 },
-  amazon: { name: '아마존', unlockLevel: 15 },
-  space: { name: '우주', unlockLevel: 20 },
+export const TANK_ENVIRONMENTS: Record<
+  TankEnvironment,
+  { name: string; emoji: string; preview: string; unlockLevel: number }
+> = {
+  coral_reef: { name: '산호초', emoji: '🪸', preview: 'linear-gradient(135deg, #006994 0%, #001a33 100%)', unlockLevel: 1 },
+  deep_sea: { name: '심해', emoji: '🌊', preview: 'linear-gradient(135deg, #001133 0%, #000511 100%)', unlockLevel: 5 },
+  korean_river: { name: '한국 강', emoji: '🏞️', preview: 'linear-gradient(135deg, #3a6b3a 0%, #0d1f0d 100%)', unlockLevel: 10 },
+  amazon: { name: '아마존', emoji: '🌿', preview: 'linear-gradient(135deg, #1a4a2e 0%, #0a1a10 100%)', unlockLevel: 15 },
+  space: { name: '우주', emoji: '🌌', preview: 'linear-gradient(135deg, #0d0d2b 0%, #000008 100%)', unlockLevel: 20 },
 };
 
 // ==================== 수조 수용량(마릿수 상한) ====================

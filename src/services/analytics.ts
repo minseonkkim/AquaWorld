@@ -128,6 +128,7 @@ export const analytics = {
   // 참여
   photoCapture: (filter: string, frame: string, action: 'shared' | 'downloaded') =>
     track('photo_capture', { filter, frame, action }),
+  changeEnvironment: (env: string) => track('change_environment', { environment: env }),
   compendiumMilestoneClaim: (pct: number) =>
     track('compendium_milestone_claim', { pct }),
 };

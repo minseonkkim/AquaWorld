@@ -21,7 +21,7 @@ import { useUiStore } from '@/store/useUiStore';
 import { Fish, TankDecoration, TankEnvironment, EggTier, FishGrowthStage } from '@/types';
 import { getDecorationMeta } from '@/utils/decorationModels';
 import { CLEAN_TANK_COST_PEARL } from '@/utils/mood';
-import { getTankCapacity, getTankScale, TANK_MAX_CAPACITY_LEVEL, TANK_EXPAND_COST_PEARL, BREED_COST_PEARL } from '@/constants';
+import { getTankCapacity, getTankScale, TANK_MAX_CAPACITY_LEVEL, TANK_EXPAND_COST_PEARL, BREED_COST_PEARL, TANK_ENVIRONMENTS } from '@/constants';
 import { isBreedable } from '@/utils/breeding';
 import {
   isCloudUser,
@@ -70,7 +70,7 @@ export default function TankPage() {
   const {
     tanks, activeTankId, addFishToTank, removeFish, feedFish, feedAllFish, tickFishGrowth,
     addDecoration, removeDecoration, updateDecoration,
-    savePreset, loadPreset, deletePreset, setLightOn,
+    savePreset, loadPreset, deletePreset, setLightOn, setEnvironment,
     tickMoodAndCleanliness, cleanTank, contaminate, expandTankCapacity, markFishBred,
   } = useTankStore();
   const { getSpeciesById } = useFishStore();
@@ -681,6 +681,18 @@ export default function TankPage() {
     setSelectedDecoId(null);
   }, []);
 
+  // ===== 테마(환경) 핸들러 =====
+  // setEnvironment 로 로컬 즉시 반영 → TankScene 이 env 의존성으로 씬을 다시 구성한다.
+  // 클라우드 유저는 useFirestoreSync 가 다른 외형 필드와 함께 debounce 저장하므로
+  // 별도 서버 호출이 없다 (서버도 unlockLevel 게이팅 없이 VALID_ENVIRONMENTS 만 검사).
+  const handleChangeEnvironment = useCallback((env: TankEnvironment) => {
+    if (!activeTankId) return;
+    playSFX('click');
+    setEnvironment(activeTankId, env);
+    analytics.changeEnvironment(env);
+    showToast(`🎨 ${TANK_ENVIRONMENTS[env].name} 테마로 변경`);
+  }, [activeTankId, setEnvironment]);
+
   // ===== 프리셋 핸들러 =====
   const handleSavePreset = useCallback((slot: number) => {
     if (!activeTankId) return;
@@ -927,6 +939,8 @@ export default function TankPage() {
         <DecorationModePanel
           selectedDecoration={selectedDecoration}
           presets={presets}
+          environment={environment}
+          onChangeEnvironment={handleChangeEnvironment}
           onAdd={handleAddDecoration}
           onExit={handleExitDecorationMode}
           onDelete={handleDeleteDecoration}
