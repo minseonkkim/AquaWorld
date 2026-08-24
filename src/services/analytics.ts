@@ -129,6 +129,7 @@ export const analytics = {
   photoCapture: (filter: string, frame: string, action: 'shared' | 'downloaded') =>
     track('photo_capture', { filter, frame, action }),
   changeEnvironment: (env: string) => track('change_environment', { environment: env }),
+  purchaseTank: (count: number) => track('purchase_tank', { count }),
   compendiumMilestoneClaim: (pct: number) =>
     track('compendium_milestone_claim', { pct }),
 };

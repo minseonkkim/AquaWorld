@@ -175,6 +175,8 @@ export const placeFish = call<{ tankId: string; fishId: string }, { user: User; 
 export const expandTankCapacity = call<{ tankId: string }, { user: User; tank: Tank }>(
   'expandTankCapacity',
 );
+// 추가 수조 구매 — 서버가 id 를 발급하므로 낙관적 적용 없이 응답(applyServerTank)을 기다린다
+export const purchaseTank = call<void, { user: User; tank: Tank }>('purchaseTank');
 export const cleanTank = call<{ tankId: string }, { user: User; tank: Tank }>('cleanTank');
 export const reconcileFish = call<{ tankId: string }, { user: User; tank: Tank }>('reconcileFish');
 

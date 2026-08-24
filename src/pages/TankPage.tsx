@@ -13,6 +13,7 @@ import PhotoModeOverlay from '@/components/PhotoModeOverlay';
 import NotificationPanel from '@/components/NotificationPanel';
 import FishInventoryPanel from '@/components/FishInventoryPanel';
 import BreedingPanel from '@/components/BreedingPanel';
+import TankSwitcher from '@/components/TankSwitcher';
 import { useUserStore } from '@/store/useUserStore';
 import { useTankStore } from '@/store/useTankStore';
 import { useFishStore } from '@/store/useFishStore';
@@ -21,7 +22,7 @@ import { useUiStore } from '@/store/useUiStore';
 import { Fish, TankDecoration, TankEnvironment, EggTier, FishGrowthStage } from '@/types';
 import { getDecorationMeta } from '@/utils/decorationModels';
 import { CLEAN_TANK_COST_PEARL } from '@/utils/mood';
-import { getTankCapacity, getTankScale, TANK_MAX_CAPACITY_LEVEL, TANK_EXPAND_COST_PEARL, BREED_COST_PEARL, TANK_ENVIRONMENTS } from '@/constants';
+import { getTankCapacity, getTankScale, TANK_MAX_CAPACITY_LEVEL, TANK_EXPAND_COST_PEARL, BREED_COST_PEARL, TANK_ENVIRONMENTS, TANK_MAX_COUNT, TANK_PURCHASE_COST_PEARL } from '@/constants';
 import { isBreedable } from '@/utils/breeding';
 import {
   isCloudUser,
@@ -35,6 +36,7 @@ import {
   expandTankCapacity as expandTankCapacityServer,
   cleanTank as cleanTankServer,
   breedFish as breedFishServer,
+  purchaseTank as purchaseTankServer,
 } from '@/services/firebase/functions';
 import { analytics } from '@/services/analytics';
 import { playSFX } from '@/services/audio';
@@ -68,7 +70,7 @@ export default function TankPage() {
     addBreedingEgg,
   } = useUserStore();
   const {
-    tanks, activeTankId, addFishToTank, removeFish, feedFish, feedAllFish, tickFishGrowth,
+    tanks, activeTankId, setActiveTank, addTank, addFishToTank, removeFish, feedFish, feedAllFish, tickFishGrowth,
     addDecoration, removeDecoration, updateDecoration,
     savePreset, loadPreset, deletePreset, setLightOn, setEnvironment,
     tickMoodAndCleanliness, cleanTank, contaminate, expandTankCapacity, markFishBred,
@@ -583,6 +585,68 @@ export default function TankPage() {
     return pending;
   });
 
+  // ===== 멀티 수조 =====
+  // 전환은 로컬 상태만 바꾼다 — 모든 수조는 로그인 시 loadUserTanks 로 이미 로드돼 있고,
+  // 성장/청결도는 30초 틱 이펙트가 activeTankId 의존성으로 재실행되며 즉시 재계산한다.
+  const handleSwitchTank = useCallback((tankId: string) => {
+    playSFX('click');
+    setActiveTank(tankId);
+    // 이전 수조 기준의 선택 상태가 새 수조로 넘어가지 않게 정리
+    setSelectedFishId(null);
+    setSelectedDecoId(null);
+  }, [setActiveTank]);
+
+  const [handleBuyTank, buyingTank] = useAsyncAction(() => {
+    const count = useTankStore.getState().tanks.length;
+    if (count === 0) return; // 기본 수조가 없으면 구매 불가 (전환 UI 자체가 안 뜨는 상태)
+    if (count >= TANK_MAX_COUNT) {
+      showToast(`수조는 최대 ${TANK_MAX_COUNT}개까지 보유할 수 있어요`);
+      return;
+    }
+    const cost = TANK_PURCHASE_COST_PEARL[count - 1];
+    if ((user?.pearl ?? 0) < cost) {
+      showToast(`Pearl이 부족합니다 (${cost} 🪙 필요)`);
+      return;
+    }
+    if (isCloudUser()) {
+      // 새 수조 id 는 서버가 발급하므로 낙관적 적용이 불가 — 응답(applyServerTank)을 기다렸다가 전환한다
+      return purchaseTankServer().then(res => {
+        playSFX('coin');
+        setActiveTank(res.tank.id);
+        analytics.purchaseTank(count + 1);
+        showToast('🫧 새 수조가 생겼어요!');
+      }).catch(e => {
+        const err = e as { code?: string; message?: string };
+        console.error('purchaseTank failed', { code: err.code, message: err.message, error: e });
+        showToast(err.message ?? '수조 구매에 실패했어요 — 다시 시도해주세요');
+      });
+    }
+    // 게스트: 서버 purchaseTank 와 같은 규칙으로 로컬 생성
+    if (!spendPearl(cost)) {
+      showToast(`Pearl이 부족합니다 (${cost} 🪙 필요)`);
+      return;
+    }
+    const now = Date.now();
+    const newTank = {
+      id: `tank_${now}_${Math.random().toString(36).slice(2, 7)}`,
+      name: `수조 ${count + 1}`,
+      environment: 'coral_reef' as TankEnvironment,
+      fish: [],
+      decorations: [],
+      cleanliness: 100,
+      lightOn: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    addTank(newTank);
+    setActiveTank(newTank.id);
+    // user.tanks 는 갱신하지 않는다 — 게스트는 첫 수조(tank_default)부터 등록하지 않는 기존
+    // 구조라, 여기만 채우면 오히려 반쪽짜리 목록이 된다 (클라 로직은 tankStore.tanks 만 본다)
+    playSFX('coin');
+    analytics.purchaseTank(count + 1);
+    showToast('🫧 새 수조가 생겼어요!');
+  });
+
   const remaining = feedRemaining(tanks);
 
   const [handleCleanTank, cleaning] = useAsyncAction(() => {
@@ -827,6 +891,19 @@ export default function TankPage() {
           </button>
         </div>
       </div>
+      )}
+
+      {/* 수조 전환/추가 (상단 HUD 아래 가운데) — 꾸미기/포토/전체화면 모드 중에는 숨김 */}
+      {!decorationMode && !photoMode && !immersiveMode && (
+        <TankSwitcher
+          tanks={tanks}
+          activeTankId={activeTankId}
+          pearl={user?.pearl ?? 0}
+          buyCost={tanks.length >= 1 && tanks.length < TANK_MAX_COUNT ? TANK_PURCHASE_COST_PEARL[tanks.length - 1] : null}
+          buying={buyingTank}
+          onSwitch={handleSwitchTank}
+          onBuy={handleBuyTank}
+        />
       )}
 
       {/* 인큐베이터 패널 (왼쪽 하단) — 꾸미기/포토/전체화면 모드 중에는 숨김 */}

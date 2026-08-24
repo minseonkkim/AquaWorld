@@ -140,6 +140,13 @@ export function getTankScale(capacityLevel?: number): number {
   return TANK_SCALE_BY_LEVEL[lvl];
 }
 
+// ==================== 멀티 수조 ====================
+// 추가 수조 구매 비용(Pearl): [2번째, 3번째]. 서버 gameData.js 와 일치시킬 것.
+// 새 수조는 마릿수 +8(기본 수용량)에 하루 무료 먹이 +2회(computeFeedMaxPerDay)가 딸려 오므로
+// 확장 최종 단계(1200)보다 비싸게 책정했다.
+export const TANK_MAX_COUNT = 3;
+export const TANK_PURCHASE_COST_PEARL = [1000, 3000] as const;
+
 // ==================== 일일 로그인 보상 (7일) ====================
 
 export const DAILY_LOGIN_REWARDS = [
