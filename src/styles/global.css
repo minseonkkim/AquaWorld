@@ -211,10 +211,11 @@ img { display: block; max-width: 100%; }
   cursor: pointer;
 }
 
-/* 꾸미기 모드 헤더(프리셋·완료)와 프리셋 슬롯 패널 — 화면이 아니라 '수조가 보이는 영역'의
-   가운데에 맞춘다. 가로에서는 우측 카탈로그 폭만큼 왼쪽으로 미는 규칙이 아래 미디어쿼리에 있다. */
+/* 꾸미기 모드 헤더(테마·프리셋·완료)와 테마/프리셋 드롭 패널 — 화면이 아니라 '수조가 보이는
+   영역'의 가운데에 맞춘다. 가로에서는 우측 카탈로그 폭만큼 왼쪽으로 미는 규칙이 아래 미디어쿼리에 있다. */
 .deco-header,
-.deco-presets {
+.deco-presets,
+.deco-themes {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
@@ -224,9 +225,10 @@ img { display: block; max-width: 100%; }
   top: calc(var(--safe-top) + 56px);
   max-width: calc(100vw - 16px);
 }
-.deco-presets {
+.deco-presets,
+.deco-themes {
   top: calc(var(--safe-top) + 100px);
-  /* 가로에서는 화면이 낮아 슬롯 3개가 아래로 삐져나간다 */
+  /* 가로에서는 화면이 낮아 슬롯 3개(테마는 5개)가 아래로 삐져나간다 */
   max-height: calc(var(--content-height) - var(--safe-top) - 112px);
   overflow-y: auto;
 }
@@ -345,9 +347,10 @@ img { display: block; max-width: 100%; }
     display: flex;
     flex-direction: column;
   }
-  /* 헤더·프리셋 패널은 화면 가운데가 아니라 카탈로그를 뺀 '수조 영역'의 가운데로 */
+  /* 헤더·테마/프리셋 패널은 화면 가운데가 아니라 카탈로그를 뺀 '수조 영역'의 가운데로 */
   .deco-header,
-  .deco-presets {
+  .deco-presets,
+  .deco-themes {
     left: calc(50% - var(--deco-catalog-w) / 2);
   }
   .deco-header {

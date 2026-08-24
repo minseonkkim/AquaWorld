@@ -697,6 +697,52 @@ exports.expandTankCapacity = onCall(async (request) => {
   });
 });
 
+/** 추가 수조 구매 (Pearl 차감 + tank 문서 생성 + user.tanks 등록) */
+exports.purchaseTank = onCall(async (request) => {
+  const uid = requireAuth(request);
+
+  return db.runTransaction(async (tx) => {
+    const uSnap = await tx.get(userRef(uid));
+    if (!uSnap.exists) throw new HttpsError("not-found", "유저 없음");
+    const user = uSnap.data();
+
+    const ids = Array.isArray(user.tanks) ? user.tanks : [];
+    // 기본 수조가 없는 손상 계정은 bootstrapUser 의 복구 경로가 담당한다 — 여기서 만들면
+    // 유료 구매가 무료 기본 수조를 대신하게 된다.
+    if (ids.length === 0) {
+      throw new HttpsError("failed-precondition", "기본 수조가 없습니다. 앱을 다시 실행해주세요.");
+    }
+    if (ids.length >= G.TANK_MAX_COUNT) {
+      throw new HttpsError("failed-precondition", `수조는 최대 ${G.TANK_MAX_COUNT}개까지 보유할 수 있습니다.`);
+    }
+    const cost = G.TANK_PURCHASE_COST_PEARL[ids.length - 1];
+    if ((user.pearl || 0) < cost) {
+      throw new HttpsError("failed-precondition", "Pearl이 부족합니다.");
+    }
+
+    const now = Date.now();
+    // 첫 수조는 uid 고정 id(tank_${uid})지만 2개째부터는 겹치므로 유일 id 를 발급한다
+    const tankId = genId("tank");
+    const tank = {
+      id: tankId,
+      name: `수조 ${ids.length + 1}`,
+      environment: "coral_reef",
+      fish: [],
+      decorations: [],
+      cleanliness: 100,
+      lightOn: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    user.pearl = (user.pearl || 0) - cost;
+    user.tanks = [...ids, tankId];
+
+    tx.set(userRef(uid), user);
+    tx.set(tankRef(tankId), { ...tank, ownerId: uid });
+    return { user, tank };
+  });
+});
+
 /** 수조 청소 (Pearl 차감 + 청결도 100) */
 exports.cleanTank = onCall(async (request) => {
   const uid = requireAuth(request);

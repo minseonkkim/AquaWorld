@@ -39,12 +39,54 @@ interface Props {
   style?: React.CSSProperties;
 }
 
-const ENV: Record<TankEnvironment, { water: number; ambient: number; bg: string }> = {
-  coral_reef:   { water: 0x006994, ambient: 0x4488bb, bg: '#001a33' },
-  deep_sea:     { water: 0x001133, ambient: 0x112244, bg: '#000511' },
-  korean_river: { water: 0x3a6b3a, ambient: 0x557755, bg: '#0d1f0d' },
-  amazon:       { water: 0x1a4a2e, ambient: 0x336644, bg: '#0a1a10' },
-  space:        { water: 0x0d0d2b, ambient: 0x1a1a44, bg: '#000008' },
+// 테마 전용 파티클 명세 — 색만 바뀌던 테마에 "장소" 체감을 주는 요소.
+// fall: 위에서 가라앉다 바닥에서 수면 근처로 리셋(마린 스노우·잎), drift: 기준점 주변 부유(플랑크톤·별).
+interface EnvParticleSpec {
+  count: number;
+  color: number;
+  opacity: number;
+  /** 파티클 반경 [min, max] */
+  size: [number, number];
+  motion: 'fall' | 'drift';
+  /** 잎처럼 판형이면 plane (기본 sphere) */
+  shape?: 'plane';
+  /** 반짝임(scale 펄스) 진폭 — 재질이 공유라 개별 opacity 대신 scale 로 표현한다 */
+  twinkle?: number;
+}
+
+const ENV: Record<TankEnvironment, {
+  water: number; ambient: number; bg: string;
+  /** 바닥 모래 색 */
+  floor: number;
+  /** 자갈 HSL 기준 hue·saturation (밝기 랜덤은 공통) */
+  gravelHue: number; gravelSat: number;
+  particles: EnvParticleSpec;
+}> = {
+  // 산호초: 밝은 모래 + 플랑크톤 반짝임
+  coral_reef: {
+    water: 0x006994, ambient: 0x4488bb, bg: '#001a33', floor: 0xc9a86a, gravelHue: 0.08, gravelSat: 0.4,
+    particles: { count: 30, color: 0xbfe8ff, opacity: 0.5, size: [0.015, 0.035], motion: 'drift', twinkle: 0.5 },
+  },
+  // 심해: 어두운 회갈색 바닥 + 마린 스노우
+  deep_sea: {
+    water: 0x001133, ambient: 0x112244, bg: '#000511', floor: 0x2e3238, gravelHue: 0.6, gravelSat: 0.1,
+    particles: { count: 45, color: 0xcfe0ea, opacity: 0.4, size: [0.015, 0.04], motion: 'fall' },
+  },
+  // 한국 강: 모래·자갈 톤 + 잔잔한 부유물
+  korean_river: {
+    water: 0x3a6b3a, ambient: 0x557755, bg: '#0d1f0d', floor: 0x8a7a55, gravelHue: 0.11, gravelSat: 0.3,
+    particles: { count: 25, color: 0xd8cba0, opacity: 0.3, size: [0.012, 0.03], motion: 'drift' },
+  },
+  // 아마존: 진흙 바닥 + 가라앉는 잎 조각
+  amazon: {
+    water: 0x1a4a2e, ambient: 0x336644, bg: '#0a1a10', floor: 0x4a3826, gravelHue: 0.07, gravelSat: 0.35,
+    particles: { count: 22, color: 0x86a24e, opacity: 0.55, size: [0.05, 0.09], motion: 'fall', shape: 'plane' },
+  },
+  // 우주: 보랏빛 암석 바닥 + 반짝이는 별
+  space: {
+    water: 0x0d0d2b, ambient: 0x1a1a44, bg: '#000008', floor: 0x272040, gravelHue: 0.72, gravelSat: 0.3,
+    particles: { count: 40, color: 0xffffff, opacity: 0.8, size: [0.015, 0.04], motion: 'drift', twinkle: 0.7 },
+  },
 };
 
 const FLOOR_Y = -3;
@@ -166,6 +208,21 @@ interface BubbleData {
   baseZ: number;
 }
 
+// motion·twinkle·spin 을 파티클마다 담아 두면 animate 가 ENV 를 다시 볼 필요가 없다
+interface EnvParticleData {
+  motion: 'fall' | 'drift';
+  speed: number;
+  wobbleAmp: number;
+  wobblePhase: number;
+  baseX: number;
+  baseY: number;
+  baseZ: number;
+  /** scale 펄스 진폭 (0이면 반짝임 없음) */
+  twinkle: number;
+  /** 판형(잎) 회전 속도 (구형은 0) */
+  spin: number;
+}
+
 interface FoodParticle {
   mesh: THREE.Mesh;
   vel: THREE.Vector3;
@@ -201,6 +258,7 @@ function TankSceneImpl({
   const sunRef = useRef<THREE.DirectionalLight | null>(null);
   const lampRef = useRef<THREE.AmbientLight | null>(null);
   const bubblesRef = useRef<THREE.Mesh[]>([]);
+  const envParticlesRef = useRef<THREE.Mesh[]>([]);
   const foodsRef = useRef<FoodParticle[]>([]);
   const rafRef = useRef(0);
   // 저전력 throttle — 최신 lowPower 값과 마지막 렌더 시각을 animate에서 참조
@@ -480,10 +538,10 @@ function TankSceneImpl({
       new THREE.MeshPhysicalMaterial({ color: 0x88ccff, transparent: true, opacity: 0.06, roughness: 0, side: THREE.BackSide }),
     ));
 
-    // 바닥
+    // 바닥 — 모래 색은 테마별 (산호초 밝은 모래 ~ 아마존 진흙)
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(boxW, boxD),
-      new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.9 }),
+      new THREE.MeshStandardMaterial({ color: env.floor, roughness: 0.9 }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = FLOOR_Y;
@@ -498,12 +556,14 @@ function TankSceneImpl({
     scene.add(water);
     waterRef.current = water;
 
-    // 자갈 — 바닥 면적에 맞춰 분포
+    // 자갈 — 바닥 면적에 맞춰 분포. 색조·채도는 테마별 (심해는 무채색, 우주는 보랏빛)
     for (let i = 0; i < 60; i++) {
       const g = new THREE.Mesh(
         new THREE.SphereGeometry(0.05 + Math.random() * 0.08, 4, 4),
         new THREE.MeshStandardMaterial({
-          color: new THREE.Color().setHSL(0.08, 0.3 + Math.random() * 0.3, 0.3 + Math.random() * 0.2),
+          color: new THREE.Color().setHSL(
+            env.gravelHue, env.gravelSat * (0.75 + Math.random() * 0.75), 0.3 + Math.random() * 0.2,
+          ),
           roughness: 0.9,
         }),
       );
@@ -535,6 +595,40 @@ function TankSceneImpl({
       } satisfies BubbleData;
       scene.add(b);
       bubblesRef.current.push(b);
+    }
+
+    // 테마 전용 파티클 풀 — 거품과 같은 개별 메시 + 공유 재질 패턴 (명세는 ENV.particles)
+    const spec = env.particles;
+    const particleMat = new THREE.MeshBasicMaterial({
+      color: spec.color, transparent: true, opacity: spec.opacity,
+      side: spec.shape === 'plane' ? THREE.DoubleSide : THREE.FrontSide,
+    });
+    envParticlesRef.current.forEach(m => scene.remove(m));
+    envParticlesRef.current = [];
+    for (let i = 0; i < spec.count; i++) {
+      const size = spec.size[0] + Math.random() * (spec.size[1] - spec.size[0]);
+      const m = new THREE.Mesh(
+        spec.shape === 'plane'
+          ? new THREE.PlaneGeometry(size * 2, size * 1.2)
+          : new THREE.SphereGeometry(size, 4, 4),
+        particleMat,
+      );
+      const baseX = (Math.random() - 0.5) * 2 * halfX;
+      const baseZ = (Math.random() - 0.5) * 2 * halfZ;
+      const baseY = FLOOR_Y + 0.3 + Math.random() * (WATER_Y - FLOOR_Y - 0.6);
+      m.position.set(baseX, baseY, baseZ);
+      if (spec.shape === 'plane') m.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+      m.userData.envParticle = {
+        motion: spec.motion,
+        speed: 0.3 + Math.random() * 0.7,
+        wobbleAmp: 0.15 + Math.random() * 0.25,
+        wobblePhase: Math.random() * Math.PI * 2,
+        baseX, baseY, baseZ,
+        twinkle: spec.twinkle ?? 0,
+        spin: spec.shape === 'plane' ? (Math.random() - 0.5) * 1.5 : 0,
+      } satisfies EnvParticleData;
+      scene.add(m);
+      envParticlesRef.current.push(m);
     }
 
     syncFishMeshes(scene);
@@ -961,6 +1055,31 @@ function TankSceneImpl({
       }
     });
 
+    // 테마 파티클 — fall 은 천천히 가라앉다 바닥에서 수면 근처로 리셋, drift 는 기준점 주변 부유
+    envParticlesRef.current.forEach(m => {
+      const d = m.userData.envParticle as EnvParticleData;
+      if (d.motion === 'fall') {
+        m.position.y -= 0.004 * d.speed * k;
+        m.position.x = d.baseX + Math.sin(t * 0.6 + d.wobblePhase) * d.wobbleAmp;
+        m.position.z = d.baseZ + Math.cos(t * 0.5 + d.wobblePhase) * d.wobbleAmp * 0.7;
+        if (d.spin) {
+          m.rotation.x += d.spin * 0.01 * k;
+          m.rotation.y += d.spin * 0.007 * k;
+        }
+        if (m.position.y < FLOOR_Y + 0.1) {
+          d.baseX = (Math.random() - 0.5) * 2 * boundsRef.current.halfX;
+          d.baseZ = (Math.random() - 0.5) * 2 * boundsRef.current.halfZ;
+          d.wobblePhase = Math.random() * Math.PI * 2;
+          m.position.set(d.baseX, WATER_Y - 0.2, d.baseZ);
+        }
+      } else {
+        m.position.x = d.baseX + Math.sin(t * 0.4 * d.speed + d.wobblePhase) * d.wobbleAmp;
+        m.position.y = d.baseY + Math.sin(t * 0.3 * d.speed + d.wobblePhase * 1.7) * d.wobbleAmp * 0.6;
+        m.position.z = d.baseZ + Math.cos(t * 0.35 * d.speed + d.wobblePhase) * d.wobbleAmp * 0.7;
+      }
+      if (d.twinkle) m.scale.setScalar(1 + Math.sin(t * (2 + d.speed * 2) + d.wobblePhase) * d.twinkle);
+    });
+
     // 수초 흔들림 — type='plant' 데코만
     decoMeshesRef.current.forEach(mesh => {
       if (!mesh.userData.isPlant) return;
@@ -1015,6 +1134,8 @@ function TankSceneImpl({
       foodsRef.current = [];
       bubblesRef.current.forEach(b => b.geometry.dispose());
       bubblesRef.current = [];
+      envParticlesRef.current.forEach(m => m.geometry.dispose());
+      envParticlesRef.current = [];
       rendererRef.current?.dispose();
     };
   }, [init, animate, bindCanvas, handlePointerDown, handlePointerMove, handlePointerUp]);

@@ -16,6 +16,13 @@ const TANK_EXPAND_COST_PEARL = [300, 600, 1200];
 // 수조 청소 비용(Pearl) (클라 src/utils/mood 와 일치)
 const CLEAN_TANK_COST_PEARL = 50;
 
+// ─── 멀티 수조 ───
+// 보유 상한과 추가 구매 비용(Pearl): [2번째, 3번째] (클라 src/constants 와 일치)
+// 새 수조는 마릿수 +8(기본 수용량)에 하루 무료 먹이 +2회(computeFeedMaxPerDay)가 딸려 오므로
+// 확장 최종 단계(1200)보다 비싸게 책정했다.
+const TANK_MAX_COUNT = 3;
+const TANK_PURCHASE_COST_PEARL = [1000, 3000];
+
 /** capacityLevel(미지정 시 0)에 해당하는 마릿수 상한 반환 */
 function getTankCapacity(capacityLevel) {
   const lvl = Math.max(0, Math.min(TANK_MAX_CAPACITY_LEVEL, capacityLevel || 0));
@@ -222,6 +229,8 @@ module.exports = {
   TANK_MAX_CAPACITY_LEVEL,
   TANK_EXPAND_COST_PEARL,
   CLEAN_TANK_COST_PEARL,
+  TANK_MAX_COUNT,
+  TANK_PURCHASE_COST_PEARL,
   getTankCapacity,
   SPECIES,
   SPECIES_COUNT,

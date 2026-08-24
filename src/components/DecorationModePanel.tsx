@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { DECORATION_CATALOG, DecorationMeta } from '@/utils/decorationModels';
-import { TankDecoration, DecorationPreset } from '@/types';
+import { TankDecoration, DecorationPreset, TankEnvironment } from '@/types';
+import { TANK_ENVIRONMENTS } from '@/constants';
 import { useUserStore } from '@/store/useUserStore';
 import { playSFX } from '@/services/audio';
 
@@ -20,6 +21,8 @@ const CATEGORY_LABEL: Record<CategoryFilter, string> = {
 interface Props {
   selectedDecoration: TankDecoration | null;
   presets: DecorationPreset[];
+  environment: TankEnvironment;
+  onChangeEnvironment: (env: TankEnvironment) => void;
   onAdd: (modelId: string) => void;
   onExit: () => void;
   onDelete: (id: string) => void;
@@ -32,11 +35,13 @@ interface Props {
 }
 
 export default function DecorationModePanel({
-  selectedDecoration, presets, onAdd, onExit, onDelete, onRotate, onScale,
+  selectedDecoration, presets, environment, onChangeEnvironment,
+  onAdd, onExit, onDelete, onRotate, onScale,
   onSavePreset, onLoadPreset, onDeletePreset, onShopRedirect,
 }: Props) {
   const [filter, setFilter] = useState<CategoryFilter>('all');
-  const [presetsOpen, setPresetsOpen] = useState(false);
+  // 테마·프리셋 드롭 패널은 같은 자리에 뜨므로 상호 배타 — 한 번에 하나만 열림
+  const [openPanel, setOpenPanel] = useState<'theme' | 'preset' | null>(null);
   const inventory = useUserStore(s => s.user?.decorationInventory) ?? EMPTY_INVENTORY;
 
   const items: DecorationMeta[] = useMemo(
@@ -46,7 +51,7 @@ export default function DecorationModePanel({
 
   return (
     <>
-      {/* 상단 헤더 — 모드 진입 표시 + 프리셋 토글 + 종료.
+      {/* 상단 헤더 — 모드 진입 표시 + 테마/프리셋 토글 + 종료.
           위치는 global.css 의 .deco-header (가로에서는 카탈로그를 뺀 수조 영역 가운데) */}
       <div className="deco-header" style={{
         display: 'flex', alignItems: 'center', gap: 8,
@@ -55,8 +60,13 @@ export default function DecorationModePanel({
         border: '1px solid rgba(77, 208, 225, 0.5)', backdropFilter: 'blur(8px)',
       }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: '#4dd0e1', whiteSpace: 'nowrap', flexShrink: 0 }}>🪴 꾸미기 모드</span>
-        <button onClick={() => setPresetsOpen(v => !v)} style={{
-          background: presetsOpen ? 'rgba(77, 208, 225, 0.3)' : 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 16,
+        <button onClick={() => setOpenPanel(v => (v === 'theme' ? null : 'theme'))} style={{
+          background: openPanel === 'theme' ? 'rgba(77, 208, 225, 0.3)' : 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 16,
+          padding: '4px 12px', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          whiteSpace: 'nowrap', flexShrink: 0,
+        }}>🎨 테마</button>
+        <button onClick={() => setOpenPanel(v => (v === 'preset' ? null : 'preset'))} style={{
+          background: openPanel === 'preset' ? 'rgba(77, 208, 225, 0.3)' : 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 16,
           padding: '4px 12px', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer',
           whiteSpace: 'nowrap', flexShrink: 0,
         }}>💾 프리셋</button>
@@ -67,8 +77,46 @@ export default function DecorationModePanel({
         }}>완료</button>
       </div>
 
+      {/* 테마 선택 패널 — 위치는 global.css 의 .deco-themes (프리셋 패널과 같은 자리) */}
+      {openPanel === 'theme' && (
+        <div className="deco-themes" style={{
+          display: 'flex', flexDirection: 'column', gap: 6,
+          background: 'rgba(10, 22, 40, 0.95)', borderRadius: 12, padding: 10,
+          border: '1px solid rgba(77, 208, 225, 0.4)', minWidth: 260,
+        }}>
+          <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', textAlign: 'center', marginBottom: 2 }}>
+            수조의 환경 테마를 선택합니다
+          </div>
+          {(Object.keys(TANK_ENVIRONMENTS) as TankEnvironment[]).map(env => {
+            const meta = TANK_ENVIRONMENTS[env];
+            const active = env === environment;
+            return (
+              <button
+                key={env}
+                onClick={() => { if (!active) onChangeEnvironment(env); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: active ? 'rgba(77, 208, 225, 0.15)' : 'rgba(255,255,255,0.05)',
+                  border: `1px solid ${active ? 'rgba(77, 208, 225, 0.6)' : 'rgba(255,255,255,0.1)'}`,
+                  borderRadius: 8, padding: '6px 8px', cursor: active ? 'default' : 'pointer',
+                }}
+              >
+                <span style={{
+                  width: 28, height: 28, borderRadius: 6, flexShrink: 0, background: meta.preview,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14,
+                }}>{meta.emoji}</span>
+                <span style={{ flex: 1, textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#fff' }}>
+                  {meta.name}
+                </span>
+                {active && <span style={{ fontSize: 10, color: '#4dd0e1', fontWeight: 700 }}>사용 중</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* 프리셋 슬롯 패널 */}
-      {presetsOpen && (
+      {openPanel === 'preset' && (
         <div className="deco-presets" style={{
           display: 'flex', flexDirection: 'column', gap: 6,
           background: 'rgba(10, 22, 40, 0.95)', borderRadius: 12, padding: 10,
